@@ -20,15 +20,6 @@ ENDPOINT_PORT := 8081
 CMD :=
 
 
-build:
-ifndef SERVICES
-	$(error Missing SERVICES)
-endif
-	./build.sh \
-		--lp $(LISTENER_PORT) \
-		--ep $(ENDPOINT_PORT) \
-		$(SERVICES)
-
 run:
 	docker run \
 		--network host \
