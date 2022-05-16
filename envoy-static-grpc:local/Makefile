@@ -15,7 +15,7 @@
 IMAGE_NAME := envoy-static-grpc:local
 
 LISTENER_PORT := 10000
-ENDPOINT_PORT := 8080
+ENDPOINT_PORT := 8081
 
 CMD :=
 
