@@ -1,10 +1,20 @@
-# Envoy with gRPC configurations  
+# Envoy with gRPC configurations
 
-## envoy-static-grpc:local
+Build scripts for various grpc-json transcoding Envoy proxies.
 
-Use the `build.sh` script to build the image. Its parameters are explained in 
-its help function accessible via `build.sh --help`. 
+## Tags / Flavours
 
+There are various tags / flavours for different situations.Each tag has its
+directory.
+
+Use the `build.sh` script in there to build the image. Its parameters are
+explained in its help function accessible via `build.sh --help`.
+
+|tag|description|
+|---|---|
+| local| local proxy|
+|simple-tls| proxy to host over TLS|
+|simple-jwt| proxy to host over TLS with token validation [work in progress]|
 
 # License
 
