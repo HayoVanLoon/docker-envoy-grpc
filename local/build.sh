@@ -16,15 +16,15 @@
 
 set -eo pipefail
 
-IMAGE_NAME="envoy-static-grpc:local"
-DOCKER_CONTEXT="."
-DESCRIPTOR=descriptor.pb
+SCRIPT_ID="local"
 
-DEBUG=
-
-LISTENER_PORT=10000
 SVCS=
-ENDPOINT_PORT=8080
+
+IMAGE_NAME="envoy-static-grpc:local"
+DESCRIPTOR="descriptor.pb"
+DEBUG=
+LISTENER_PORT="10000"
+ENDPOINT_PORT="8080"
 
 usage() {
 	B=$(tput bold)
@@ -50,6 +50,9 @@ ${B}DESCRIPTION${X}
 
     ${B}--image-name${X} IMAGE_NAME
         Name to use for image. Defaults to '${IMAGE_NAME}'.
+
+    ${B}--debug${X}
+        Activate debug mode. Debug mode keeps build artefacts.
 
 ${B}EXAMPLES${X}
     ${B}${0} helloworld.Greeter${X}
@@ -108,17 +111,14 @@ if [ ! -f "${DESCRIPTOR}" ]; then
 fi
 
 echo "
-Image Name: ${IMAGE_NAME}
-
-Descriptor: ${DESCRIPTOR}
-Services: ${SVCS}
-
-Default Listener Port: ${LISTENER_PORT}
-Default Endpoint Port: ${ENDPOINT_PORT}
-
+IMAGE_NAME: \"\${IMAGE_NAME}\"
+DESCRIPTOR: \"\${DESCRIPTOR}\"
+DEBUG: \"\${DEBUG}\"
+LISTENER_PORT: \"\${LISTENER_PORT}\"
+ENDPOINT_PORT: \"\${ENDPOINT_PORT}\"
 "
 
-BUILD_DIR="tmp/build-local-$(date +%s)"
+BUILD_DIR="tmp/build-${SCRIPT_ID}-$(date +%s)"
 mkdir -p "${BUILD_DIR}"
 
 cp "${DESCRIPTOR}" "${BUILD_DIR}"
@@ -190,16 +190,26 @@ static_resources:
               socket_address:
                 address: localhost
                 port_value: PLACEHOLDER_ENDPOINT_PORT
-
 EOF
 
 cat >"${BUILD_DIR}/entrypoint.sh" <<EOF
 #!/usr/bin/env bash
 
+set -eo pipefail
+
 YAML=\$(
-	sed -E "s/PLACEHOLDER_LISTENER_PORT/\${LISTENER_PORT}/g" /configs/config.yaml | \
-		sed -E "s/PLACEHOLDER_ENDPOINT_PORT/\${ENDPOINT_PORT}/g"
+	cat /configs/config.yaml | \
+		sed "s/PLACEHOLDER_LISTENER_PORT/\${LISTENER_PORT}/g" | \
+		sed "s/PLACEHOLDER_ENDPOINT_PORT/\${ENDPOINT_PORT}/g"
 )
+
+if [ -n "\${ENVOY_VALIDATE}" ]; then
+	envoy --mode validate --config-yaml "\${YAML}"
+	exit 0
+fi
+
+echo LISTENER_PORT: "\${LISTENER_PORT}"
+echo ENDPOINT_PORT: "\${ENDPOINT_PORT}"
 
 envoy --config-yaml "\${YAML}"
 
@@ -214,6 +224,7 @@ FROM envoyproxy/envoy:v1.21-latest
 COPY config.yaml /configs/
 COPY entrypoint.sh /
 
+ENV ENVOY_VALIDATE=""
 ENV LISTENER_PORT="${LISTENER_PORT}"
 ENV ENDPOINT_PORT="${ENDPOINT_PORT}"
 
@@ -229,3 +240,7 @@ EOF
 )
 
 [ -z "${DEBUG}" ] && rm -rf "${BUILD_DIR}" || echo "Build artefacts remain in: ${BUILD_DIR}"
+
+docker run \
+	--env ENVOY_VALIDATE=1 \
+	-i -t ${IMAGE_NAME}

@@ -1,0 +1,120 @@
+static_resources:
+
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: PLACEHOLDER_LISTENER_PORT
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress
+          codec_type: AUTO
+
+          route_config:
+            name: proxy_route
+            virtual_hosts:
+            - name: proxy_target
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  host_rewrite_literal: PLACEHOLDER_ENDPOINT_ADDRESS
+                  cluster: proxy_target
+                  timeout: 90s
+              cors:
+                allow_origin_string_match:
+                  - safe_regex: {google_re2: {}, regex: \*}
+                allow_methods: "OPTIONS GET POST PUT DELETE PATCH"
+                allow_headers: "*"
+                expose_headers: grpc-status grpc-message
+                allow_credentials: true
+
+          http_filters:
+          - name: envoy.filters.http.grpc_json_transcoder
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
+
+              proto_descriptor: "/configs/descriptor.pb"
+              services: [ ${SVCS} ]
+
+          - name: envoy.filters.http.jwt_authn
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+
+              providers:
+                accounts_google_com:
+                  issuer: https://accounts.google.com
+# TODO(hvl):
+#                  audiences:
+#                  - TODO
+                  remote_jwks:
+                    http_uri:
+                      uri: https://www.googleapis.com/oauth2/v3/certs
+                      cluster: googleapis
+                      timeout: 1s
+                    cache_duration:
+                      seconds: 300
+                    async_fetch: {}
+
+              rules:
+              - match:
+                  prefix: /
+                requires:
+                  provider_name: accounts_google_com
+
+          - name: envoy.filters.http.cors
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          access_log:
+            - name: envoy.access_loggers.stdout
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+
+
+  clusters:
+  - name: proxy_target
+    type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
+    load_assignment:
+      cluster_name: proxy_target
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: PLACEHOLDER_ENDPOINT_ADDRESS
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: PLACEHOLDER_ENDPOINT_ADDRESS
+
+  - name: googleapis
+    type: LOGICAL_DNS
+    dns_lookup_family: V4_ONLY
+    load_assignment:
+      cluster_name: googleapis
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: www.googleapis.com
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: www.googleapis.com

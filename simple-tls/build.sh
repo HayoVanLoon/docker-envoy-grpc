@@ -16,6 +16,8 @@
 
 set -eo pipefail
 
+SCRIPT_ID="simple-tls"
+
 IMAGE_NAME="envoy-static-grpc:simple-tls"
 DOCKER_CONTEXT="."
 DESCRIPTOR=descriptor.pb
@@ -50,6 +52,9 @@ ${B}DESCRIPTION${X}
 
     ${B}--image-name${X} IMAGE_NAME
         Name to use for image. Defaults to '${IMAGE_NAME}'.
+
+    ${B}--debug${X}
+        Activate debug mode. Debug mode keeps build artefacts.
 
 ${B}EXAMPLES${X}
     ${B}${0} --endpoint-address www.example.com helloworld.Greeter${X}
@@ -107,7 +112,18 @@ if [ ! -f "${DESCRIPTOR}" ]; then
 	exit 3
 fi
 
-BUILD_DIR="tmp/build-$(date +%s)"
+echo "
+Image Name: ${IMAGE_NAME}
+
+Descriptor: ${DESCRIPTOR}
+Services: ${SVCS}
+
+Default Listener Port: ${LISTENER_PORT}
+Default Endpoint Address: ${ENDPOINT_ADDRESS}
+
+"
+
+BUILD_DIR="tmp/build-${SCRIPT_ID}-$(date +%s)"
 mkdir -p "${BUILD_DIR}"
 
 cp "${DESCRIPTOR}" "${BUILD_DIR}"
