@@ -1,3 +1,6 @@
+package main
+
+var buildScriptTemplate = `
 #!/usr/bin/env bash
 
 # Copyright 2022 Hayo van Loon
@@ -134,3 +137,4 @@ EOF
 docker run \
 	--env ENVOY_VALIDATE=1 \
 	-i -t ${IMAGE_NAME}
+`

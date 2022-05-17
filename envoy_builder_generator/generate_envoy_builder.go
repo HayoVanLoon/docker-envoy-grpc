@@ -155,6 +155,20 @@ func scriptSimpleJwt(tag, conf string) buildScript {
 	}
 }
 
+func scriptSimpleTls(tag, conf string) buildScript {
+	return buildScript{
+		Tag: tag,
+		Parameters: []parameter{
+			imageName(tag),
+			descriptor(),
+			debug(),
+			listenerPort(8080),
+			endpointAddress(),
+		},
+		YamlFile: conf,
+	}
+}
+
 func main() {
 	var tag, conf string
 	flag.StringVar(&tag, "tag", "", "image tag")
@@ -164,11 +178,7 @@ func main() {
 		log.Fatal("need -tag TAG")
 	}
 
-	bs, err := ioutil.ReadFile("files/build.go.sh")
-	if err != nil {
-		log.Fatal(err)
-	}
-	tmpl, err := template.New("build.sh").Parse(string(bs))
+	tmpl, err := template.New("build.sh").Parse(buildScriptTemplate)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,6 +189,8 @@ func main() {
 		data = scriptLocal(tag, conf)
 	case "simple-jwt":
 		data = scriptSimpleJwt(tag, conf)
+	case "simple-tls":
+		data = scriptSimpleTls(tag, conf)
 	}
 
 	if err := tmpl.Execute(os.Stdout, data); err != nil {
