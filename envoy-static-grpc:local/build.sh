@@ -20,6 +20,8 @@ IMAGE_NAME="envoy-static-grpc:local"
 DOCKER_CONTEXT="."
 DESCRIPTOR=descriptor.pb
 
+DEBUG=
+
 LISTENER_PORT=10000
 SVCS=
 ENDPOINT_PORT=8080
@@ -63,15 +65,15 @@ ${B}EXAMPLES${X}
 
 while true; do
 	case ${1} in
-	--lp)
+	--lp|--listener-port)
 		LISTENER_PORT=${2}
 		shift 2
 		;;
-	--ep)
+	--ep|--endpoint-port)
 		ENDPOINT_PORT=${2}
 		shift 2
 		;;
-	--descriptor)
+	-d|--descriptor)
 		DESCRIPTOR=${2}
 		shift 2
 		;;
@@ -83,6 +85,10 @@ while true; do
 		usage
 		exit 0
 		;;
+	--debug)
+		DEBUG=1
+		shift 1
+		;;
 	'') break ;;
 	*)
 		SVCS="$([ -n "${SVCS}" ] && echo "${SVCS}, " || echo "")\"${1}\""
@@ -91,12 +97,28 @@ while true; do
 	esac
 done
 
+if [ -z "${SVCS}" ]; then
+	echo "Need at least one service"
+	exit 3
+fi
+
 if [ ! -f "${DESCRIPTOR}" ]; then
 	echo "${0}: cannot stat '${DESCRIPTOR}': No such file"
 	exit 3
 fi
 
-BUILD_DIR="tmp/build-$(date +%s)"
+echo "
+Image Name: ${IMAGE_NAME}
+
+Descriptor: ${DESCRIPTOR}
+Services: ${SVCS}
+
+Default Listener Port: ${LISTENER_PORT}
+Default Endpoint Port: ${ENDPOINT_PORT}
+
+"
+
+BUILD_DIR="tmp/build-local-$(date +%s)"
 mkdir -p "${BUILD_DIR}"
 
 cp "${DESCRIPTOR}" "${BUILD_DIR}"
@@ -128,19 +150,27 @@ static_resources:
                 route:
                   cluster: local_service
                   timeout: 90s
+              cors:
+                allow_origin_string_match:
+                - safe_regex: {google_re2: {}, regex: \*}
+                allow_methods: "OPTIONS GET POST PUT DELETE PATCH"
+                allow_headers: "*"
+                expose_headers: grpc-status grpc-message
+                allow_credentials: true
           http_filters:
-            - name: envoy.filters.http.grpc_json_transcoder
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
-                proto_descriptor: "/configs/descriptor.pb"
-                services: [ ${SVCS} ]
-            - name: envoy.filters.http.router
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          - name: envoy.filters.http.grpc_json_transcoder
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
+              proto_descriptor: "/configs/descriptor.pb"
+              services: [ ${SVCS} ]
+          - name: envoy.filters.http.cors
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
           access_log:
-            - name: envoy.access_loggers.stdout
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
 
   clusters:
   - name: local_service
@@ -198,4 +228,4 @@ EOF
 		-t ${IMAGE_NAME} .
 )
 
-rm -rf "${BUILD_DIR}"
+[ -z "${DEBUG}" ] && rm -rf "${BUILD_DIR}" || echo "Build artefacts remain in: ${BUILD_DIR}"
