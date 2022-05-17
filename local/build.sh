@@ -34,63 +34,53 @@ ${B}NAME${X}
     ${0} - build an image for a gRPC-json proxy to a local service
 
 ${B}SYNOPSIS${X}
-    ${0}  [--lp LISTENER_PORT] [--ep ENDPOINT_PORT] [--descriptor DESCRIPTOR] [--image-name IMAGE_NAME] SERVICE_NAME [SERVICE_NAME...]
+    ${0} [--image-name IMAGE_NAME] [-d DESCRIPTOR] [--debug] [--lp LISTENER_PORT] [--endpoint-port ENDPOINT_PORT] SERVICE_NAME [SERVICE_NAME...]
 
 ${B}DESCRIPTION${X}
     Builds an image with a static gRPC config.
 
-    ${B}--lp${X} LISTENER_PORT
-        Default proxy listening port. Defaults to 10000.
-
-    ${B}--ep${X} ENDPOINT_PORT
-        Default proxy forwarding port. Defaults to 8080.
-
-    ${B}--descriptor{X} DESCRIPTOR
-		gRPC descriptor file. Defaults to '${DESCRIPTOR}'.
-
-    ${B}--image-name${X} IMAGE_NAME
+	${B}--image-name${X} IMAGE_NAME
         Name to use for image. Defaults to '${IMAGE_NAME}'.
 
-    ${B}--debug${X}
+	${B}-d|--descriptor${X} DESCRIPTOR
+        gRPC descriptor file. Defaults to '${DESCRIPTOR}'.
+
+	${B}--debug${X}
         Activate debug mode. Debug mode keeps build artefacts.
 
-${B}EXAMPLES${X}
-    ${B}${0} helloworld.Greeter${X}
+	${B}--lp${X} LISTENER_PORT
+        Default proxy listening port. Defaults to '${LISTENER_PORT}'.
 
-    Build an image that with minimal parameter set.
-
-    ${B}${0} --lp 10000 --ep 8080 helloworld.Greeter${X}
-
-    Build an image that will by default listen on port 10000 and forward to port
-    8080.
+	${B}--endpoint-port${X} ENDPOINT_PORT
+        Default proxy forwarding port. Defaults to '${ENDPOINT_PORT}'.
 "
 }
 
 while true; do
 	case ${1} in
-	--lp|--listener-port)
-		LISTENER_PORT=${2}
-		shift 2
-		;;
-	--ep|--endpoint-port)
-		ENDPOINT_PORT=${2}
+	--image-name)
+		IMAGE_NAME=${2}
 		shift 2
 		;;
 	-d|--descriptor)
 		DESCRIPTOR=${2}
 		shift 2
 		;;
-	--image-name)
-		IMAGE_NAME=${2}
+	--debug)
+		DEBUG=1
+		shift 1
+		;;
+	--lp)
+		LISTENER_PORT=${2}
+		shift 2
+		;;
+	--endpoint-port)
+		ENDPOINT_PORT=${2}
 		shift 2
 		;;
 	--help)
 		usage
 		exit 0
-		;;
-	--debug)
-		DEBUG=1
-		shift 1
 		;;
 	'') break ;;
 	*)
@@ -111,11 +101,11 @@ if [ ! -f "${DESCRIPTOR}" ]; then
 fi
 
 echo "
-IMAGE_NAME: \"\${IMAGE_NAME}\"
-DESCRIPTOR: \"\${DESCRIPTOR}\"
-DEBUG: \"\${DEBUG}\"
-LISTENER_PORT: \"\${LISTENER_PORT}\"
-ENDPOINT_PORT: \"\${ENDPOINT_PORT}\"
+IMAGE_NAME: \"${IMAGE_NAME}\"
+DESCRIPTOR: \"${DESCRIPTOR}\"
+DEBUG: \"${DEBUG}\"
+LISTENER_PORT: \"${LISTENER_PORT}\"
+ENDPOINT_PORT: \"${ENDPOINT_PORT}\"
 "
 
 BUILD_DIR="tmp/build-${SCRIPT_ID}-$(date +%s)"
