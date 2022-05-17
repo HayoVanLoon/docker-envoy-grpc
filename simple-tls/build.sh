@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 
 # Copyright 2022 Hayo van Loon
@@ -18,14 +19,12 @@ set -eo pipefail
 
 SCRIPT_ID="simple-tls"
 
-IMAGE_NAME="envoy-static-grpc:simple-tls"
-DOCKER_CONTEXT="."
-DESCRIPTOR=descriptor.pb
-
-DEBUG=
-
-LISTENER_PORT=10000
 SVCS=
+
+IMAGE_NAME="envoy-static-grpc:simple-tls"
+DESCRIPTOR="descriptor.pb"
+DEBUG=
+LISTENER_PORT="8080"
 ENDPOINT_ADDRESS=
 
 usage() {
@@ -36,35 +35,42 @@ ${B}NAME${X}
     ${0} - build an image for a gRPC-json proxy to a local service
 
 ${B}SYNOPSIS${X}
-    ${0}  --endpoint-address ENDPOINT_ADDRESS [--lp LISTENER_PORT] [--descriptor DESCRIPTOR] [--image-name IMAGE_NAME] SERVICE_NAME [SERVICE_NAME...]
+    ${0} --endpoint-address ENDPOINT_ADDRESS [--image-name IMAGE_NAME] [-d DESCRIPTOR] [--debug] [--lp LISTENER_PORT] SERVICE_NAME [SERVICE_NAME...]
 
 ${B}DESCRIPTION${X}
     Builds an image with a static gRPC config.
 
-    ${B}--lp${X} LISTENER_PORT
-        Default proxy listening port. Defaults to 8080.
-
-    ${B}--endpoint-address${X} ENDPOINT_ADDRESS
+	${B}--endpoint-address${X} ENDPOINT_ADDRESS
         Proxy forwarding address. Required.
 
-    ${B}--descriptor{X} DESCRIPTOR
-		gRPC descriptor file. Defaults to '${DESCRIPTOR}'.
-
-    ${B}--image-name${X} IMAGE_NAME
+	${B}--image-name${X} IMAGE_NAME
         Name to use for image. Defaults to '${IMAGE_NAME}'.
 
-    ${B}--debug${X}
+	${B}-d|--descriptor${X} DESCRIPTOR
+        gRPC descriptor file. Defaults to '${DESCRIPTOR}'.
+
+	${B}--debug${X}
         Activate debug mode. Debug mode keeps build artefacts.
 
-${B}EXAMPLES${X}
-    ${B}${0} --endpoint-address www.example.com helloworld.Greeter${X}
-
-    Build an image that with minimal parameter set.
+	${B}--lp${X} LISTENER_PORT
+        Default proxy listening port. Defaults to '${LISTENER_PORT}'.
 "
 }
 
 while true; do
 	case ${1} in
+	--image-name)
+		IMAGE_NAME=${2}
+		shift 2
+		;;
+	-d|--descriptor)
+		DESCRIPTOR=${2}
+		shift 2
+		;;
+	--debug)
+		DEBUG=1
+		shift 1
+		;;
 	--lp)
 		LISTENER_PORT=${2}
 		shift 2
@@ -73,21 +79,9 @@ while true; do
 		ENDPOINT_ADDRESS=${2}
 		shift 2
 		;;
-	--descriptor)
-		DESCRIPTOR=${2}
-		shift 2
-		;;
-	--image-name)
-		IMAGE_NAME=${2}
-		shift 2
-		;;
 	--help)
 		usage
 		exit 0
-		;;
-	--debug)
-		DEBUG=1
-		shift 1
 		;;
 	'') break ;;
 	*)
@@ -97,30 +91,25 @@ while true; do
 	esac
 done
 
-if [ -z "${ENDPOINT_ADDRESS}" ]; then
-	echo "Missing --endpoint-address ENDPOINT_ADDRESS"
-	exit 3
-fi
-
 if [ -z "${SVCS}" ]; then
 	echo "Need at least one service"
 	exit 3
 fi
-
+if [ -z "${ENDPOINT_ADDRESS}" ]; then
+	echo "Missing --endpoint-address ENDPOINT_ADDRESS"
+	exit 3
+fi
 if [ ! -f "${DESCRIPTOR}" ]; then
 	echo "${0}: cannot stat '${DESCRIPTOR}': No such file"
 	exit 3
 fi
 
 echo "
-Image Name: ${IMAGE_NAME}
-
-Descriptor: ${DESCRIPTOR}
-Services: ${SVCS}
-
-Default Listener Port: ${LISTENER_PORT}
-Default Endpoint Address: ${ENDPOINT_ADDRESS}
-
+IMAGE_NAME: \"${IMAGE_NAME}\"
+DESCRIPTOR: \"${DESCRIPTOR}\"
+DEBUG: \"${DEBUG}\"
+LISTENER_PORT: \"${LISTENER_PORT}\"
+ENDPOINT_ADDRESS: \"${ENDPOINT_ADDRESS}\"
 "
 
 BUILD_DIR="tmp/build-${SCRIPT_ID}-$(date +%s)"
@@ -206,12 +195,21 @@ EOF
 cat >"${BUILD_DIR}/entrypoint.sh" <<EOF
 #!/usr/bin/env bash
 
+set -eo pipefail
+
 YAML=\$(
-	sed -E "s/PLACEHOLDER_LISTENER_PORT/\${LISTENER_PORT}/g" /configs/config.yaml | \
-		sed -E "s/PLACEHOLDER_ENDPOINT_ADDRESS/\${ENDPOINT_ADDRESS}/g"
+	cat /configs/config.yaml | \
+		sed "s/PLACEHOLDER_LISTENER_PORT/\${LISTENER_PORT}/g" | \
+		sed "s/PLACEHOLDER_ENDPOINT_ADDRESS/\${ENDPOINT_ADDRESS}/g"
 )
 
-echo "Proxying: \${LISTENER_PORT} --> \${ENDPOINT_ADDRESS}"
+if [ -n "\${ENVOY_VALIDATE}" ]; then
+	envoy --mode validate --config-yaml "\${YAML}"
+	exit 0
+fi
+
+echo LISTENER_PORT: "\${LISTENER_PORT}"
+echo ENDPOINT_ADDRESS: "\${ENDPOINT_ADDRESS}"
 
 envoy --config-yaml "\${YAML}"
 
@@ -226,6 +224,7 @@ FROM envoyproxy/envoy:v1.21-latest
 COPY config.yaml /configs/
 COPY entrypoint.sh /
 
+ENV ENVOY_VALIDATE=""
 ENV LISTENER_PORT="${LISTENER_PORT}"
 ENV ENDPOINT_ADDRESS="${ENDPOINT_ADDRESS}"
 
@@ -241,3 +240,7 @@ EOF
 )
 
 [ -z "${DEBUG}" ] && rm -rf "${BUILD_DIR}" || echo "Build artefacts remain in: ${BUILD_DIR}"
+
+docker run \
+	--env ENVOY_VALIDATE=1 \
+	-i -t ${IMAGE_NAME}
