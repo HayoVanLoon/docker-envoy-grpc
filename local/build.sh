@@ -24,6 +24,7 @@ IMAGE_NAME="envoy-static-grpc:local"
 DESCRIPTOR="descriptor.pb"
 DEBUG=
 LISTENER_PORT="10000"
+ENDPOINT_ADDRESS="localhost"
 ENDPOINT_PORT="8080"
 
 usage() {
@@ -51,6 +52,9 @@ ${B}DESCRIPTION${X}
 	${B}--lp${X} LISTENER_PORT
         Default proxy listening port. Defaults to '${LISTENER_PORT}'.
 
+	${B}--endpoint-address${X} ENDPOINT_ADDRESS
+        Proxy forwarding address. Defaults to '${ENDPOINT_ADDRESS}'.
+
 	${B}--endpoint-port${X} ENDPOINT_PORT
         Default proxy forwarding port. Defaults to '${ENDPOINT_PORT}'.
 "
@@ -72,6 +76,10 @@ while true; do
 		;;
 	--lp)
 		LISTENER_PORT=${2}
+		shift 2
+		;;
+	--endpoint-address)
+		ENDPOINT_ADDRESS=${2}
 		shift 2
 		;;
 	--endpoint-port)
@@ -101,11 +109,12 @@ if [ ! -f "${DESCRIPTOR}" ]; then
 fi
 
 echo "
-IMAGE_NAME: \"${IMAGE_NAME}\"
-DESCRIPTOR: \"${DESCRIPTOR}\"
-DEBUG: \"${DEBUG}\"
-LISTENER_PORT: \"${LISTENER_PORT}\"
-ENDPOINT_PORT: \"${ENDPOINT_PORT}\"
+IMAGE_NAME:       \"${IMAGE_NAME}\"
+DESCRIPTOR:       \"${DESCRIPTOR}\"
+DEBUG:            \"${DEBUG}\"
+LISTENER_PORT:    \"${LISTENER_PORT}\"
+ENDPOINT_ADDRESS: \"${ENDPOINT_ADDRESS}\"
+ENDPOINT_PORT:    \"${ENDPOINT_PORT}\"
 "
 
 BUILD_DIR="tmp/build-${SCRIPT_ID}-$(date +%s)"
@@ -178,7 +187,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: localhost
+                address: PLACEHOLDER_ENDPOINT_ADDRESS
                 port_value: PLACEHOLDER_ENDPOINT_PORT
 EOF
 
@@ -187,9 +196,14 @@ cat >"${BUILD_DIR}/entrypoint.sh" <<EOF
 
 set -eo pipefail
 
+echo LISTENER_PORT:    "\${LISTENER_PORT}"
+echo ENDPOINT_ADDRESS: "\${ENDPOINT_ADDRESS}"
+echo ENDPOINT_PORT:    "\${ENDPOINT_PORT}"
+
 YAML=\$(
 	cat /configs/config.yaml | \
 		sed "s/PLACEHOLDER_LISTENER_PORT/\${LISTENER_PORT}/g" | \
+		sed "s/PLACEHOLDER_ENDPOINT_ADDRESS/\${ENDPOINT_ADDRESS}/g" | \
 		sed "s/PLACEHOLDER_ENDPOINT_PORT/\${ENDPOINT_PORT}/g"
 )
 
@@ -197,9 +211,6 @@ if [ -n "\${ENVOY_VALIDATE}" ]; then
 	envoy --mode validate --config-yaml "\${YAML}"
 	exit 0
 fi
-
-echo LISTENER_PORT: "\${LISTENER_PORT}"
-echo ENDPOINT_PORT: "\${ENDPOINT_PORT}"
 
 envoy --config-yaml "\${YAML}"
 
@@ -216,6 +227,7 @@ COPY entrypoint.sh /
 
 ENV ENVOY_VALIDATE=""
 ENV LISTENER_PORT="${LISTENER_PORT}"
+ENV ENDPOINT_ADDRESS="${ENDPOINT_ADDRESS}"
 ENV ENDPOINT_PORT="${ENDPOINT_PORT}"
 
 COPY descriptor.pb /configs/
@@ -224,13 +236,14 @@ CMD /entrypoint.sh
 EOF
 
 (
-	cd ${BUILD_DIR}
+	cd "${BUILD_DIR}"
 	docker build \
-		-t ${IMAGE_NAME} .
+		-t "${IMAGE_NAME}" .
 )
 
 [ -z "${DEBUG}" ] && rm -rf "${BUILD_DIR}" || echo "Build artefacts remain in: ${BUILD_DIR}"
 
+echo "Testing container ..."
 docker run \
 	--env ENVOY_VALIDATE=1 \
-	-i -t ${IMAGE_NAME}
+	-i -t --rm "${IMAGE_NAME}"
