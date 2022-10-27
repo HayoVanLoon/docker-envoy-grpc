@@ -195,7 +195,6 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
 
-
   clusters:
   - name: proxy_target
     type: LOGICAL_DNS
