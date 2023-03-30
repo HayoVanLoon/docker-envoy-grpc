@@ -17,6 +17,7 @@
 set -eo pipefail
 
 SCRIPT_ID="local"
+ENVOY_VERSION=v1.25
 
 SVCS=
 
@@ -144,25 +145,32 @@ static_resources:
             - name: local_service
               domains: ["*"]
               routes:
-              - match:
-                  prefix: "/"
-                route:
-                  cluster: local_service
-                  timeout: 90s
-              cors:
-                allow_origin_string_match:
-                - safe_regex: {google_re2: {}, regex: \*}
-                allow_methods: "OPTIONS GET POST PUT DELETE PATCH"
-                allow_headers: "*"
-                expose_headers: grpc-status grpc-message
-                allow_credentials: true
+              - match: {prefix: "/"}
+                route: {cluster: local_service, timeout: 90s}
+              typed_per_filter_config:
+                envoy.filters.http.cors:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                  allow_origin_string_match:
+                  - safe_regex: {regex: \*}
+                  allow_methods: "OPTIONS, GET, POST, PUT, DELETE, PATCH"
+                  allow_headers: "*"
+                  expose_headers: "grpc-status grpc-message"
+                  allow_credentials: {value: true}
           http_filters:
           - name: envoy.filters.http.grpc_json_transcoder
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder
               proto_descriptor: "/configs/descriptor.pb"
               services: [ ${SVCS} ]
+              request_validation_options:
+                reject_unknown_method: true
+                reject_binding_body_field_collisions: true
+              convert_grpc_status: true
+              match_incoming_request_route: true
+              auto_mapping: false
           - name: envoy.filters.http.cors
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -220,7 +228,7 @@ chmod +x "${BUILD_DIR}/entrypoint.sh"
 ################################################################################
 
 cat >"${BUILD_DIR}/Dockerfile" <<EOF
-FROM envoyproxy/envoy:v1.21-latest
+FROM envoyproxy/envoy:${ENVOY_VERSION}-latest
 
 COPY config.yaml /configs/
 COPY entrypoint.sh /
